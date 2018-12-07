@@ -427,6 +427,8 @@ setJSONStringForObject:(id)object
     }
   }
 
+  queryString = [queryString stringByReplacingOccurrencesOfString:@"{" withString:@"%7B"];
+  queryString = [queryString stringByReplacingOccurrencesOfString:@"}" withString:@"%7D"];
   NSURL *URL = [[NSURL alloc] initWithString:[NSString stringWithFormat:
                                               @"%@://%@%@%@",
                                               scheme ?: @"",
