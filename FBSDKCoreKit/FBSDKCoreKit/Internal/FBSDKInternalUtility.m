@@ -426,7 +426,7 @@ setJSONStringForObject:(id)object
       return nil;
     }
   }
-
+    //wtf why u no copy?
   queryString = [queryString stringByReplacingOccurrencesOfString:@"{" withString:@"%7B"];
   queryString = [queryString stringByReplacingOccurrencesOfString:@"}" withString:@"%7D"];
   NSURL *URL = [[NSURL alloc] initWithString:[NSString stringWithFormat:
