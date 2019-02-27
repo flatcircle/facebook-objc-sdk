@@ -17,35 +17,9 @@
 # IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 # CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-# This script builds the API documentation from source-level comments.
-# This script requires jazzy be installed: https://github.com/realm/jazzy
+# --------------
+# Main Script
+# --------------
 
-. "${FB_SDK_SCRIPT:-$(dirname "$0")}/common.sh"
-
-# Make sure jazzy is installed
-hash jazzy >/dev/null || die 'Jazzy is not installed! Run `sudo gem install jazzy`'
-
-# Then iterate over the kits
-KITS=("FBSDKCoreKit"
-      "FBSDKShareKit"
-      "FBSDKLoginKit"
-      "FBSDKPlacesKit"
-      "AccountKit"
-      "FBSDKMarketingKit")
-
-CNT=${#KITS[@]}
-
-for (( i = 0; i < CNT; i++ ))
-do
-  KITREFDOCS=${KITS[$i]};
-
-  # Actually generate the documentation
-  jazzy --config "$FB_SDK_ROOT"/.jazzy.yaml --framework-root "$FB_SDK_ROOT"/"$KITREFDOCS" --umbrella-header "$FB_SDK_ROOT"/"$KITREFDOCS"/"$KITREFDOCS"/"$KITREFDOCS".h --output "$FB_SDK_ROOT"/docs/"$KITREFDOCS"
-
-  # Zip the result so it can be uploaded easily
-  pushd $FB_SDK_ROOT/docs/
-  zip -r $KITREFDOCS.zip $KITREFDOCS
-  popd
-done
-
-common_success
+BUILD_TYPE=$(echo "$TRAVIS_JOB_NAME" | awk '{print $1}' | tr '[:upper:]' '[:lower:]')
+sh scripts/run.sh build "$BUILD_TYPE" "$XCODE_WORKSPACE" "$XCODE_SDK" "$XCODE_SCHEME"

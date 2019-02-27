@@ -35,33 +35,47 @@ static TYPE *g_##PLIST_KEY = nil; \
   g_##PLIST_KEY = [value copy]; \
 }
 
-NSString *const FBSDKLoggingBehaviorAccessTokens = @"include_access_tokens";
-NSString *const FBSDKLoggingBehaviorPerformanceCharacteristics = @"perf_characteristics";
-NSString *const FBSDKLoggingBehaviorAppEvents = @"app_events";
-NSString *const FBSDKLoggingBehaviorInformational = @"informational";
-NSString *const FBSDKLoggingBehaviorCacheErrors = @"cache_errors";
-NSString *const FBSDKLoggingBehaviorUIControlErrors = @"ui_control_errors";
-NSString *const FBSDKLoggingBehaviorDeveloperErrors = @"developer_errors";
-NSString *const FBSDKLoggingBehaviorGraphAPIDebugWarning = @"graph_api_debug_warning";
-NSString *const FBSDKLoggingBehaviorGraphAPIDebugInfo = @"graph_api_debug_info";
-NSString *const FBSDKLoggingBehaviorNetworkRequests = @"network_requests";
+#define FBSDKSETTINGS_AUTOLOG_APPEVENTS_ENABLED_USER_DEFAULTS_KEY @"com.facebook.sdk:autoLogAppEventsEnabled%@"
+#define FBSDKSETTINGS_ADVERTISERID_COLLECTION_ENABLED_USER_DEFAULTS_KEY @"com.facebook.sdk:advertiserIDCollectionEnabled%@"
+
+FBSDKLoggingBehavior FBSDKLoggingBehaviorAccessTokens = @"include_access_tokens";
+FBSDKLoggingBehavior FBSDKLoggingBehaviorPerformanceCharacteristics = @"perf_characteristics";
+FBSDKLoggingBehavior FBSDKLoggingBehaviorAppEvents = @"app_events";
+FBSDKLoggingBehavior FBSDKLoggingBehaviorInformational = @"informational";
+FBSDKLoggingBehavior FBSDKLoggingBehaviorCacheErrors = @"cache_errors";
+FBSDKLoggingBehavior FBSDKLoggingBehaviorUIControlErrors = @"ui_control_errors";
+FBSDKLoggingBehavior FBSDKLoggingBehaviorDeveloperErrors = @"developer_errors";
+FBSDKLoggingBehavior FBSDKLoggingBehaviorGraphAPIDebugWarning = @"graph_api_debug_warning";
+FBSDKLoggingBehavior FBSDKLoggingBehaviorGraphAPIDebugInfo = @"graph_api_debug_info";
+FBSDKLoggingBehavior FBSDKLoggingBehaviorNetworkRequests = @"network_requests";
 
 static NSObject<FBSDKAccessTokenCaching> *g_tokenCache;
-static NSMutableSet *g_loggingBehavior;
-static NSString *g_legacyUserDefaultTokenInformationKeyName = @"FBAccessTokenInformationKey";
+static NSMutableSet<FBSDKLoggingBehavior> *g_loggingBehaviors;
 static NSString *const FBSDKSettingsLimitEventAndDataUsage = @"com.facebook.sdk:FBSDKSettingsLimitEventAndDataUsage";
 static BOOL g_disableErrorRecovery;
 static NSString *g_userAgentSuffix;
 static NSString *g_defaultGraphAPIVersion;
 static FBSDKAccessTokenExpirer *g_accessTokenExpirer;
+static NSString *const FBSDKSettingsAutoLogAppEventsEnabled = @"FacebookAutoLogAppEventsEnabled";
+static NSString *const FBSDKSettingsAdvertiserIDCollectionEnabled = @"FacebookAdvertiserIDCollectionEnabled";
+static NSNumber *g_autoLogAppEventsEnabled;
+static NSNumber *g_advertiserIDCollectionEnabled;
 
 @implementation FBSDKSettings
 
 + (void)initialize
 {
   if (self == [FBSDKSettings class]) {
+    NSString *appID = [self appID];
     g_tokenCache = [[FBSDKAccessTokenCache alloc] init];
     g_accessTokenExpirer = [[FBSDKAccessTokenExpirer alloc] init];
+    // Fetch meta data from plist and overwrite the value with NSUserDefaults if possible
+    g_autoLogAppEventsEnabled = [self appEventSettingsForPlistKey:FBSDKSettingsAutoLogAppEventsEnabled defaultValue:@YES];
+    g_autoLogAppEventsEnabled = [self appEventSettingsForUserDefaultsKey:[NSString stringWithFormat:FBSDKSETTINGS_AUTOLOG_APPEVENTS_ENABLED_USER_DEFAULTS_KEY, appID] defaultValue:g_autoLogAppEventsEnabled];
+    [[NSUserDefaults standardUserDefaults] setObject:g_autoLogAppEventsEnabled forKey:[NSString stringWithFormat:FBSDKSETTINGS_AUTOLOG_APPEVENTS_ENABLED_USER_DEFAULTS_KEY, appID]];
+    g_advertiserIDCollectionEnabled = [self appEventSettingsForPlistKey:FBSDKSettingsAdvertiserIDCollectionEnabled defaultValue:@YES];
+    g_advertiserIDCollectionEnabled = [self appEventSettingsForUserDefaultsKey:[NSString stringWithFormat:FBSDKSETTINGS_ADVERTISERID_COLLECTION_ENABLED_USER_DEFAULTS_KEY, appID] defaultValue:g_advertiserIDCollectionEnabled];
+    [[NSUserDefaults standardUserDefaults] setObject:g_advertiserIDCollectionEnabled forKey:[NSString stringWithFormat:FBSDKSETTINGS_ADVERTISERID_COLLECTION_ENABLED_USER_DEFAULTS_KEY, appID]];
   }
 }
 
@@ -73,19 +87,17 @@ FBSDKSETTINGS_PLIST_CONFIGURATION_SETTING_IMPL(NSString, FacebookClientToken, cl
 FBSDKSETTINGS_PLIST_CONFIGURATION_SETTING_IMPL(NSString, FacebookDisplayName, displayName, setDisplayName, nil);
 FBSDKSETTINGS_PLIST_CONFIGURATION_SETTING_IMPL(NSString, FacebookDomainPart, facebookDomainPart, setFacebookDomainPart, nil);
 FBSDKSETTINGS_PLIST_CONFIGURATION_SETTING_IMPL(NSNumber, FacebookJpegCompressionQuality, _JPEGCompressionQualityNumber, _setJPEGCompressionQualityNumber, @0.9);
-FBSDKSETTINGS_PLIST_CONFIGURATION_SETTING_IMPL(NSNumber, FacebookAutoLogAppEventsEnabled, autoLogAppEventsEnabled,
-  setAutoLogAppEventsEnabled, @1);
-FBSDKSETTINGS_PLIST_CONFIGURATION_SETTING_IMPL(NSNumber, FacebookCodelessDebugLogEnabled, codelessDebugLogEnabled,
-  setCodelessDebugLogEnabled, @0);
-FBSDKSETTINGS_PLIST_CONFIGURATION_SETTING_IMPL(NSNumber, FacebookAdvertiserIDCollectionEnabled, advertiserIDCollectionEnabled,
-  setAdvertiserIDCollectionEnabled, @1);
+FBSDKSETTINGS_PLIST_CONFIGURATION_SETTING_IMPL(NSNumber, FacebookCodelessDebugLogEnabled, _codelessDebugLogEnabled,
+  _setCodelessDebugLogEnabled, @0);
 
-+ (void)setGraphErrorRecoveryDisabled:(BOOL)disableGraphErrorRecovery {
-  g_disableErrorRecovery = disableGraphErrorRecovery;
++ (BOOL)isGraphErrorRecoveryEnabled
+{
+  return !g_disableErrorRecovery;
 }
 
-+ (BOOL)isGraphErrorRecoveryDisabled {
-  return g_disableErrorRecovery;
++ (void)setGraphErrorRecoveryEnabled:(BOOL)graphErrorRecoveryEnabled
+{
+  g_disableErrorRecovery = !graphErrorRecoveryEnabled;
 }
 
 + (CGFloat)JPEGCompressionQuality
@@ -98,7 +110,47 @@ FBSDKSETTINGS_PLIST_CONFIGURATION_SETTING_IMPL(NSNumber, FacebookAdvertiserIDCol
   [self _setJPEGCompressionQualityNumber:@(JPEGCompressionQuality)];
 }
 
-+ (BOOL)limitEventAndDataUsage
++ (BOOL)isCodelessDebugLogEnabled
+{
+  return [self _codelessDebugLogEnabled].boolValue;
+}
+
++ (void)setCodelessDebugLogEnabled:(BOOL)codelessDebugLogEnabled
+{
+  [self _setCodelessDebugLogEnabled:@(codelessDebugLogEnabled)];
+}
+
++ (BOOL)isAutoLogAppEventsEnabled
+{
+  return g_autoLogAppEventsEnabled.boolValue;
+}
+
++ (void)setAutoLogAppEventsEnabled:(BOOL)autoLogAppEventsEnabled
+{
+  if ([g_autoLogAppEventsEnabled isEqual:@(autoLogAppEventsEnabled)]) {
+    return;
+  }
+
+  g_autoLogAppEventsEnabled = @(autoLogAppEventsEnabled);
+  [[NSUserDefaults standardUserDefaults] setObject:g_autoLogAppEventsEnabled forKey:[NSString stringWithFormat:FBSDKSETTINGS_AUTOLOG_APPEVENTS_ENABLED_USER_DEFAULTS_KEY, [self appID]]];
+}
+
++ (BOOL)isAdvertiserIDCollectionEnabled
+{
+  return g_advertiserIDCollectionEnabled.boolValue;
+}
+
++ (void)setAdvertiserIDCollectionEnabled:(BOOL)advertiserIDCollectionEnabled
+{
+  if ([g_advertiserIDCollectionEnabled isEqual:@(advertiserIDCollectionEnabled)]) {
+    return;
+  }
+
+  g_advertiserIDCollectionEnabled = @(advertiserIDCollectionEnabled);
+  [[NSUserDefaults standardUserDefaults] setObject:g_advertiserIDCollectionEnabled forKey:[NSString stringWithFormat:FBSDKSETTINGS_ADVERTISERID_COLLECTION_ENABLED_USER_DEFAULTS_KEY, [self appID]]];
+}
+
++ (BOOL)shouldLimitEventAndDataUsage
 {
   NSNumber *storedValue = [[NSUserDefaults standardUserDefaults] objectForKey:FBSDKSettingsLimitEventAndDataUsage];
   if (storedValue == nil) {
@@ -114,58 +166,46 @@ FBSDKSETTINGS_PLIST_CONFIGURATION_SETTING_IMPL(NSNumber, FacebookAdvertiserIDCol
   [defaults synchronize];
 }
 
-+ (NSSet *)loggingBehavior
++ (NSSet<FBSDKLoggingBehavior> *)loggingBehaviors
 {
-  if (!g_loggingBehavior) {
-    NSArray *bundleLoggingBehaviors = [[NSBundle mainBundle] objectForInfoDictionaryKey:@"FacebookLoggingBehavior"];
+  if (!g_loggingBehaviors) {
+    NSArray<FBSDKLoggingBehavior> *bundleLoggingBehaviors = [[NSBundle mainBundle] objectForInfoDictionaryKey:@"FacebookLoggingBehavior"];
     if (bundleLoggingBehaviors) {
-      g_loggingBehavior = [[NSMutableSet alloc] initWithArray:bundleLoggingBehaviors];
+      g_loggingBehaviors = [[NSMutableSet alloc] initWithArray:bundleLoggingBehaviors];
     } else {
       // Establish set of default enabled logging behaviors.  You can completely disable logging by
       // specifying an empty array for FacebookLoggingBehavior in your Info.plist.
-      g_loggingBehavior = [[NSMutableSet alloc] initWithObjects:FBSDKLoggingBehaviorDeveloperErrors, nil];
+      g_loggingBehaviors = [[NSMutableSet alloc] initWithObjects:FBSDKLoggingBehaviorDeveloperErrors, nil];
     }
   }
-  return [g_loggingBehavior copy];
+  return [g_loggingBehaviors copy];
 }
 
-+ (void)setLoggingBehavior:(NSSet *)loggingBehavior
++ (void)setLoggingBehaviors:(NSSet<FBSDKLoggingBehavior> *)loggingBehaviors
 {
-  if (![g_loggingBehavior isEqualToSet:loggingBehavior]) {
-    g_loggingBehavior = [loggingBehavior mutableCopy];
+  if (![g_loggingBehaviors isEqualToSet:loggingBehaviors]) {
+    g_loggingBehaviors = [loggingBehaviors mutableCopy];
 
     [self updateGraphAPIDebugBehavior];
   }
 }
 
-+ (void)enableLoggingBehavior:(NSString *)loggingBehavior
++ (void)enableLoggingBehavior:(FBSDKLoggingBehavior)loggingBehavior
 {
-  if (!g_loggingBehavior) {
-    [self loggingBehavior];
+  if (!g_loggingBehaviors) {
+    [self loggingBehaviors];
   }
-  [g_loggingBehavior addObject:loggingBehavior];
+  [g_loggingBehaviors addObject:loggingBehavior];
   [self updateGraphAPIDebugBehavior];
 }
 
-+ (void)disableLoggingBehavior:(NSString *)loggingBehavior
++ (void)disableLoggingBehavior:(FBSDKLoggingBehavior)loggingBehavior
 {
-  if (!g_loggingBehavior) {
-    [self loggingBehavior];
+  if (!g_loggingBehaviors) {
+    [self loggingBehaviors];
   }
-  [g_loggingBehavior removeObject:loggingBehavior];
+  [g_loggingBehaviors removeObject:loggingBehavior];
   [self updateGraphAPIDebugBehavior];
-}
-
-+ (void)setLegacyUserDefaultTokenInformationKeyName:(NSString *)tokenInformationKeyName
-{
-  if (![g_legacyUserDefaultTokenInformationKeyName isEqualToString:tokenInformationKeyName]) {
-    g_legacyUserDefaultTokenInformationKeyName = tokenInformationKeyName;
-  }
-}
-
-+ (NSString *)legacyUserDefaultTokenInformationKeyName
-{
-  return g_legacyUserDefaultTokenInformationKeyName;
 }
 
 #pragma mark - Readonly Configuration Settings
@@ -209,9 +249,30 @@ FBSDKSETTINGS_PLIST_CONFIGURATION_SETTING_IMPL(NSNumber, FacebookAdvertiserIDCol
   }
 }
 
++ (NSString *)defaultGraphAPIVersion
+{
+  return FBSDK_TARGET_PLATFORM_VERSION;
+}
+
 + (NSString *)graphAPIVersion
 {
-  return g_defaultGraphAPIVersion ?: FBSDK_TARGET_PLATFORM_VERSION;
+  return g_defaultGraphAPIVersion ?: self.defaultGraphAPIVersion;
+}
+
++ (NSNumber *)appEventSettingsForPlistKey:(NSString *)plistKey
+                             defaultValue:(NSNumber *)defaultValue
+{
+  return [[[NSBundle mainBundle] objectForInfoDictionaryKey:plistKey] copy] ?: defaultValue;
+}
+
++ (NSNumber *)appEventSettingsForUserDefaultsKey:(NSString *)userDefaultsKey
+                                    defaultValue:(NSNumber *)defaultValue
+{
+  NSData *data = [[NSUserDefaults standardUserDefaults] objectForKey:userDefaultsKey];
+  if ([data isKindOfClass:[NSNumber class]]) {
+    return (NSNumber *)data;
+  }
+  return defaultValue;
 }
 
 #pragma mark - Internal - Graph API Debug
@@ -219,17 +280,17 @@ FBSDKSETTINGS_PLIST_CONFIGURATION_SETTING_IMPL(NSNumber, FacebookAdvertiserIDCol
 + (void)updateGraphAPIDebugBehavior
 {
   // Enable Warnings everytime Info is enabled
-  if ([g_loggingBehavior containsObject:FBSDKLoggingBehaviorGraphAPIDebugInfo]
-      && ![g_loggingBehavior containsObject:FBSDKLoggingBehaviorGraphAPIDebugWarning]) {
-    [g_loggingBehavior addObject:FBSDKLoggingBehaviorGraphAPIDebugWarning];
+  if ([g_loggingBehaviors containsObject:FBSDKLoggingBehaviorGraphAPIDebugInfo]
+      && ![g_loggingBehaviors containsObject:FBSDKLoggingBehaviorGraphAPIDebugWarning]) {
+    [g_loggingBehaviors addObject:FBSDKLoggingBehaviorGraphAPIDebugWarning];
   }
 }
 
 + (NSString *)graphAPIDebugParamValue
 {
-  if ([[self loggingBehavior] containsObject:FBSDKLoggingBehaviorGraphAPIDebugInfo]) {
+  if ([[self loggingBehaviors] containsObject:FBSDKLoggingBehaviorGraphAPIDebugInfo]) {
     return @"info";
-  } else if ([[self loggingBehavior] containsObject:FBSDKLoggingBehaviorGraphAPIDebugWarning]) {
+  } else if ([[self loggingBehaviors] containsObject:FBSDKLoggingBehaviorGraphAPIDebugWarning]) {
     return @"warning";
   }
 

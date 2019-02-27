@@ -99,7 +99,7 @@
 
 + (NSString *)advertiserID
 {
-  if (![[FBSDKSettings advertiserIDCollectionEnabled] boolValue]) {
+  if (!FBSDKSettings.isAdvertiserIDCollectionEnabled) {
     return nil;
   }
 
@@ -211,7 +211,7 @@
 {
   NSString *behaviorToLog = FBSDKLoggingBehaviorAppEvents;
   if (allowLogAsDeveloperError) {
-    if ([[FBSDKSettings loggingBehavior] containsObject:FBSDKLoggingBehaviorDeveloperErrors]) {
+    if ([FBSDKSettings.loggingBehaviors containsObject:FBSDKLoggingBehaviorDeveloperErrors]) {
       // Rather than log twice, prefer 'DeveloperErrors' if it's set over AppEvents.
       behaviorToLog = FBSDKLoggingBehaviorDeveloperErrors;
     }
